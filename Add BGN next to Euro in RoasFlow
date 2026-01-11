@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // IMPORTANT:
       // - Keep `match` EXACTLY as it was typed (symbol placement, comma/dot, spacing)
       // - Only append BGN conversion
-      return `${match} (${fmtBGN(bgnVal)} лв)`;
+      return `${match} (${fmtBGN(bgnVal)}лв)`;
     });
 
     if (replaced !== text) {
@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // - If symbol is €, keep it prefix like original label
     // - If it's EUR, keep "EUR" separate like original
     const eurDisplay = (cur === '€') ? `€${rawTrim}` : `EUR ${rawTrim}`;
-    const desired = `${eurDisplay} (${fmtBGN(bgnVal)} лв)`;
+    const desired = `${eurDisplay} (${fmtBGN(bgnVal)}лв)`;
 
     // Avoid unnecessary rewrites
     if (label.dataset.last === desired) return;
