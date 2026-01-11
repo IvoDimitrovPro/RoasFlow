@@ -1,0 +1,115 @@
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const RATE = 1.95583;
+  const excludedTags = new Set(['SCRIPT','STYLE','TEXTAREA','INPUT','PRE','CODE']);
+
+  // Matches:
+  // 1) Prefix: "EUR 29.90", "€29,90", "€ 1", "EUR1"
+  // 2) Suffix: "29.90 EUR", "29,90€", "1 €"
+  const euroRegex =
+    /((?:\bEUR\b|€)\s*([0-9]+(?:[.,][0-9]+)?))|(([0-9]+(?:[.,][0-9]+)?)\s*(?:\bEUR\b|€))/g;
+
+  const toNum = (s) => parseFloat(String(s).replace(',', '.'));
+  const fmtBGN = (n) => Number(n).toFixed(2);
+
+  // Prevent nesting: if we've already converted inside this subtree, skip
+  const isInsideConverted = (node) => {
+    let el = node.parentNode;
+    while (el && el.nodeType === 1) {
+      if (el.hasAttribute('data-currency-converted')) return true;
+      el = el.parentNode;
+    }
+    return false;
+  };
+
+  function replaceEuroInTextNode(textNode) {
+    if (textNode.nodeType !== 3) return;
+    const parentTag = textNode.parentNode?.tagName;
+    if (excludedTags.has(parentTag)) return;
+    if (isInsideConverted(textNode)) return;
+
+    const text = textNode.nodeValue;
+    if (!text || text.search(euroRegex) === -1) return;
+
+    // Reset lastIndex because we use /g in replace
+    euroRegex.lastIndex = 0;
+
+    const wrapper = document.createElement('span');
+    wrapper.setAttribute('data-currency-converted', 'true');
+
+    const replaced = text.replace(euroRegex, (match, _prefWhole, prefNum, _sufWhole, sufNum) => {
+      const numStr = (prefNum ?? sufNum);
+      const eurVal = toNum(numStr);
+      if (Number.isNaN(eurVal)) return match;
+
+      const bgnVal = eurVal * RATE;
+
+      // IMPORTANT:
+      // - Keep `match` EXACTLY as it was typed (symbol placement, comma/dot, spacing)
+      // - Only append BGN conversion
+      return `${match} (${fmtBGN(bgnVal)} лв)`;
+    });
+
+    if (replaced !== text) {
+      wrapper.innerHTML = replaced;
+      textNode.parentNode.replaceChild(wrapper, textNode);
+    }
+  }
+
+  // GHL split case:
+  // <label class="payment-suggestion-tag-text"><span>EUR</span> 29.90</label>
+  // or <span>€</span> 29,90
+  function patchGHLLabel(label) {
+    const span = label.querySelector('span');
+    const next = span?.nextSibling;
+
+    const cur = span?.textContent?.trim();
+    if (!span || !next || next.nodeType !== 3) return;
+    if (cur !== 'EUR' && cur !== '€') return;
+
+    const raw = next.nodeValue; // keep EXACT formatting (spaces, comma/dot) as much as possible
+    const rawTrim = raw.trim();
+    const eurVal = toNum(rawTrim);
+    if (Number.isNaN(eurVal)) return;
+
+    const bgnVal = eurVal * RATE;
+
+    // Build displayed EUR part without changing formatting:
+    // - If symbol is €, keep it prefix like original label
+    // - If it's EUR, keep "EUR" separate like original
+    const eurDisplay = (cur === '€') ? `€${rawTrim}` : `EUR ${rawTrim}`;
+    const desired = `${eurDisplay} (${fmtBGN(bgnVal)} лв)`;
+
+    // Avoid unnecessary rewrites
+    if (label.dataset.last === desired) return;
+
+    // Write final text (single line)
+    label.textContent = desired;
+    label.dataset.last = desired;
+  }
+
+  function scanText() {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) replaceEuroInTextNode(walker.currentNode);
+  }
+
+  function patchGHL() {
+    document.querySelectorAll('label.payment-suggestion-tag-text').forEach(patchGHLLabel);
+  }
+
+  // Runtime:
+  // - Patch GHL every frame (it overwrites)
+  // - Full text scan throttled (performance)
+  let lastScan = 0;
+  function loop(ts) {
+    patchGHL();
+    if (ts - lastScan > 300) {
+      scanText();
+      lastScan = ts;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  setTimeout(() => requestAnimationFrame(loop), 300);
+});
+</script>
